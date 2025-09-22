@@ -1,0 +1,272 @@
+
+import os
+from google.colab import userdata
+
+os.environ["GOOGLE_API_KEY"] = userdata.get("GOOGLE_API_KEY")
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+response = llm.invoke("What is the stock price of Applr")
+print(response)
+
+"""Connecting the LLM to the Financial Market"""
+
+import yfinance as yf
+from langchain.agents import initialize_agent, AgentType, Tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+# Initialize the language model
+llm = ChatGoogleGenerativeAI(temperature=0, model="gemini-2.0-flash")
+
+# Define the function to get stock price
+def get_stock_price(symbol):
+    ticker = yf.Ticker(symbol)
+    todays_data = ticker.history(period='1d')
+    return f"The current stock price of {symbol} is ${todays_data['Close'].iloc[-1]:.2f}"
+
+# Create a tool for the AGent to use
+tools = [
+    Tool(
+        name="Get Stock Price",
+        func=get_stock_price,
+        description="Useful for when you need to get the current stock price of a company. The Input should be the stock symbol of the company"
+    )
+]
+
+# Initialize the Agent
+agent = initialize_agent(tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True)
+
+# Run the Agent
+query = "What is the stock price of Bitcoin"
+response = agent.invoke(query)
+print(response)
+
+from langchain_core.tools import tool, StructuredTool
+from datetime import date
+
+@tool
+def get_stock_price(symbol):
+  """Use this tool to get the stock price of the company. The input should be the stock symbol of the company"""
+  ticker = yf.Ticker(symbol)
+  todays_data = ticker.history(period='1d')
+  return f"the current stock price of {symbol} is ${todays_data['Close'].iloc[-1]:.2f}"
+
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import MessagesPlaceholder
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain import hub
+
+tools = [get_stock_price]
+
+prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a helpful assistant. Try to answer user query using available tools"
+        ),
+        MessagesPlaceholder(variable_name="messages"),
+        MessagesPlaceholder(variable_name="agent_scratchpad")
+    ]
+)
+
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+
+finance_agent = create_tool_calling_agent(
+    llm,
+    tools,
+    prompt
+)
+
+finance_agent_executor = AgentExecutor(
+    agent=finance_agent,
+    tools=tools,
+    verbose=True
+)
+
+from langchain_core.messages import HumanMessage
+
+response =  finance_agent_executor.invoke({"messages":
+    [HumanMessage(content="What is the stock price of Apple")]}
+)
+print(response)
+
+"""Adding Stock Market Analysis Tools"""
+
+from langchain_core.tools import tool, StructuredTool
+from datetime import date
+
+@tool
+def company_information(ticker: str) -> dict:
+  """Use this toolve company information like address, industry, sector, company officers, business summary, website,
+  marketCap, current price, ebitda, total debt, total revenue, debt-to-equity, etc."""
+
+  ticker_obj = yf.Ticker(ticker)
+  ticker_info = ticker_obj.get_info()
+
+  return ticker_info
+
+@tool
+def last_dividend_and_earnings_date(ticker: str) -> dict:
+  """
+  Use this tool to retrieve company's last dividend date and ernings release dates,
+  it does not provided information about historical dividend yeilds
+  """
+  ticker_obj = yf.Ticker(ticker)
+
+  return ticker_obj.get_calendar()
+
+@tool
+def summary_of_mutual_fund_holders(ticker: str) -> dict:
+  """
+  Use this tool to retrieve company's top mutual fund holders,
+  it also retrieve the percentage of shares, stock count and value of holdings
+  """
+  ticker_obj = yf.Ticker(ticker)
+  sf_holders = ticker.obj.get_mutualfund_holders()
+
+  return sf_holders.to_dict(orient="records")
+
+@tool
+def summary_of_institutiona_holders(ticker: str) -> dict:
+  """
+  Use this tool to retrieve company's top institution holders,
+  it also retrieve the percentage of shares, stock count and value of holdings
+  """
+
+  ticker_obj = yf.Ticker(ticker)
+  insta_holders = ticker_obj.get_institutional_holders()
+
+  return insta_holders.to_dict(orient="records")
+
+
+@tool
+def stock_grades_upgrades__downgrades(ticker: str) -> dict:
+  """
+  Use this tool to retrieve rating upgrades and downgradesdetails of particular stock,
+  it will provide name of firms along with 'To Grade' and 'Fom Grade' details, Grade date is also provided
+  """
+  ticker_obj = yf.Ticker(ticker)
+
+  curr_year = date.today().year
+
+  upgrades_downgrades = ticker.obj.get_upgrades_downgrades()
+  upgrades_downgrades = upgrades_downgrades.loc[upgrades_downgrades.index > f'{curr_year}-01-01']
+  upgrades_downgrades = upgrades_downgrades[upgrades_downgrades["Action"].isin(["up", "down"])]
+
+  return upgrades_downgrade.to_dict(orient="records")
+
+@tool
+def stock_splits_history(ticker: str) -> dict:
+  """
+  Use this tool to retrieve company's historical stock splits data
+  """
+  ticker_obj = yf.Ticker(ticker)
+  hist_splits = ticker_obj.get_splits()
+
+  return hist_splits.to_dict()
+
+@tool
+def stock_news(ticker: str) -> dict:
+  """
+  Use this to retrive latest news articles discussing particular stock ticker
+  """
+  ticker_obj = yf.Ticker(ticker)
+
+  return ticker_obj.get_news()
+
+tools = [
+    company_information,
+    last_dividend_and_earnings_date,
+    summary_of_mutual_fund_holders,
+    summary_of_institutiona_holders,
+    stock_grades_upgrades__downgrades,
+    stock_splits_history,
+]
+
+finance_agent = create_tool_calling_agent(
+    llm,
+    tools,
+    prompt
+)
+
+finance_agent_executor = AgentExecutor(
+    agent=finance_agent,
+    tools=tools,
+    verbose=True
+)
+
+response = finance_agent_executor.invoke({"messages":
+    [HumanMessage(content="What is the last dividend date of Apple")]}
+)
+print(response)
+
+response = finance_agent_executor.invoke({"messages":
+    [HumanMessage(content="What are the ebitda, total debt, total revenue and debt to equity for Nvidia Stock")]}
+)
+print(response)
+#
+
+"""# **Portfolio Analysis**"""
+
+# Create a dummy portfolio of 5 stocks.
+portfolio = {
+    "AAPL": 50, # Apple
+    "MSFT": 30, # Microsoft
+    "GOOGL": 20, # Alphabet (Google)
+    "AMZN": 15, # Amazon
+    "TSLA": 25 # Nvidia
+}
+
+# Function to analyze a single stock
+def analyze_stock(ticker: str, shares: int):
+  response = finance_agent_executor.invoke(
+      {"messages":
+    [HumanMessage(content=f"Provide the brief analysis of {ticker} including current price, P/E ratio, and recent performance.")]
+       }
+      )
+  return f"{ticker} ({shares} shares): {response['output']}"
+
+# Function to analyze the entire portfoliuo
+def analyze_portfolio(portfolio: dict):
+  total_value = 0
+  analysis = []
+
+  for ticker, shares in portfolio.items():
+    stock_analysis = analyze_stock(ticker, shares)
+    analysis.append(stock_analysis)
+
+    # Get current price to calculate portfolio value
+    price_response = finance_agent_executor.invoke(
+        {"messages":
+    [HumanMessage(content=f"What is the current price of {ticker} stock?")]
+       }
+      )
+    try:
+      price = float(price_response['output'].split('$')[1].split()[0])
+      total_value += price * shares
+    except:
+      print(f"Could not pharse price for {ticker}")
+
+  return analysis, total_value
+
+# Analyze the portfolio
+print("Analyzing portfolio.....")
+stock_analysis, total_value = analyze_portfolio(portfolio)
+
+# print the results
+print("n\nPortfolio Analysis:")
+for analysis in stock_analysis:
+  print(analysis)
+
+print(f"\nTotal portfolio value: ${total_value:.2f}")
+
+# Print the analysis
+print("\nPortfolio Analysis:")
+for analysis in stock_analysis:
+  print(analysis)
+  print("_" * 50)
+
+"""Investment Analysis"""
+
