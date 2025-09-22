@@ -1,0 +1,4 @@
+yfinance==0.2.44
+langchain==0.3.0
+langchain-google-genai==1.0.10
+google-colab==1.0.0
