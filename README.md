@@ -1,4 +1,4 @@
-# Financial Market Analysis Assistant
+# Stock Analysis Agent
 
 This project implements a Financial Market Analysis Assistant that integrates Google Gemini (via LangChain) with the yfinance library to provide real-time stock market data and portfolio analysis. The assistant supports queries for stock prices, company information, dividend and earnings dates, institutional and mutual fund holders, stock upgrades/downgrades, stock splits, and recent news. It also includes portfolio analysis for a user-defined set of stocks, calculating total portfolio value and providing brief stock analyses.
 Features
